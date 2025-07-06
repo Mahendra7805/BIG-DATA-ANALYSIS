@@ -1,0 +1,70 @@
+import dask.dataframe as dd
+import pandas as pd
+import json
+from dask.diagnostics import ProgressBar
+
+
+ProgressBar().register()
+
+df = dd.read_csv("tmdb_5000_credits.csv")
+
+
+print(df.head())
+
+
+def extract_cast_names(cast_str):
+    try:
+        cast_list = json.loads(cast_str)
+        return [member['name'] for member in cast_list]
+    except:
+        return []
+
+def extract_directors(crew_str):
+    try:
+        crew_list = json.loads(crew_str)
+        return [member['name'] for member in crew_list if member['job'] == 'Director']
+    except:
+        return []
+
+df['cast_names'] = df['cast'].map_partitions(lambda s: s.map(extract_cast_names))
+df['director_names'] = df['crew'].map_partitions(lambda s: s.map(extract_directors))
+
+
+df_cast_exploded = df[['title', 'cast_names']].explode('cast_names')
+df_director_exploded = df[['title', 'director_names']].explode('director_names')
+
+
+actor_counts = df_cast_exploded.groupby('cast_names').title.count().compute().reset_index()
+actor_counts.columns = ['actor_name', 'movie_count']
+top_actors = actor_counts.sort_values('movie_count', ascending=False).head(10)
+print("\nTop 10 actors by movie appearances:")
+print(top_actors)
+
+director_counts = df_director_exploded.groupby('director_names').title.count().compute().reset_index()
+director_counts.columns = ['director_name', 'movie_count']
+top_directors = director_counts.sort_values('movie_count', ascending=False).head(10)
+print("\nTop 10 directors by number of movies:")
+print(top_directors)
+
+
+unique_movies = df['title'].nunique().compute()
+print(f"\nTotal unique movies: {unique_movies}")
+
+
+df['cast_size'] = df['cast_names'].map(lambda x: len(x) if isinstance(x, list) else 0)
+cast_sizes = df[['title', 'cast_size']].compute()
+print("\nTop 10 movies with largest cast:")
+print(cast_sizes.sort_values('cast_size', ascending=False).head(10))
+"""
+Big Data Analysis Script using Dask
+Author: Mahendra Rajurkar
+Dataset: TMDB 5000 Credits
+Goal: Extract insights from movie cast and crew using scalable tools
+"""
+print("Top 10 actors by number of movie appearances:")
+print(top_actors)
+
+print("Top 10 directors by number of movies directed:")
+print(top_directors)
+
+print(f"Total number of unique movies: {unique_movies}")
